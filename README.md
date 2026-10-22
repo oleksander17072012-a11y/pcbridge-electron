@@ -92,6 +92,36 @@ npm run dist    # portable + NSIS, требует Windows
 pairing-блока, а также контракт UI: каждый `id` из `app.js` существует в разметке,
 каждый IPC-канал из `preload` зарегистрирован в main, окно чата не получает preload.
 
+## Диагностика запуска
+
+Приложение пишет журнал **до** создания окна, поэтому причина падения всегда видна:
+
+```
+%LOCALAPPDATA%\PC-Bridge\startup.log
+```
+
+Фазы: `boot` → `app:ready` → `window:create` → `main-window:created` →
+`overlay-window:created` → `relay:listening` → `tray:ready` → `app:started`.
+Если файла нет вообще — процесс не дошёл до JavaScript (манифест, антивирус, права).
+Если есть строка `fatal:` — там текст исключения.
+
+Ручной запуск из cmd:
+
+```bat
+cd C:\PC-Bridge
+set ELECTRON_ENABLE_LOGGING=1
+PC-Bridge-portable-0.1.2.exe --enable-logging --v=1
+```
+
+Безопасный режим (без прозрачности, оверлея и трея) — так проверяется, не в них ли дело:
+
+```bat
+PC-Bridge-portable-0.1.2.exe --safe
+```
+
+`tools/diagnose.bat` делает всё это автоматически: два прогона, сбор логов,
+сведения о системе и архив `pcbridge-diag.zip` на рабочем столе.
+
 ## Где что лежит
 
 ```

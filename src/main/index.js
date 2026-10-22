@@ -20,13 +20,18 @@ const startup = require('./startup');
 startup.installCrashHandlers();
 
 const VERSION = app.getVersion();
+
+// Safe mode disables the three things that can crash a GPU/driver or AV stack before the
+// window paints: transparency, the always-on-top overlay and the tray icon.
+const SAFE_MODE = process.argv.includes('--safe') || process.env.PCBRIDGE_SAFE === '1';
 startup.log('boot', {
   version: VERSION,
   platform: process.platform,
   arch: process.arch,
   electron: process.versions.electron,
   packaged: app.isPackaged,
-  elevated: process.env.PCBRIDGE_ELEVATED || 'unknown',
+  safeMode: SAFE_MODE,
+  argv: process.argv.slice(1),
 });
 const CHAT_URL = 'https://arena.ai/';
 
@@ -107,8 +112,8 @@ function createMainWindow() {
     resizable: false,
     maximizable: false,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: !SAFE_MODE,
+    backgroundColor: SAFE_MODE ? '#0a0a0e' : '#00000000',
     show: false,
     title: 'PC-Bridge',
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
@@ -320,8 +325,12 @@ if (!gotLock) {
     try {
       createMainWindow();
       startup.log('main-window:created');
-      createOverlayWindow();
-      startup.log('overlay-window:created');
+      if (SAFE_MODE) {
+        startup.log('overlay-window:skipped-safe-mode');
+      } else {
+        createOverlayWindow();
+        startup.log('overlay-window:created');
+      }
     } catch (error) {
       startup.log('windows:failed', { message: error.message, stack: error.stack });
       throw error;
@@ -383,7 +392,11 @@ if (!gotLock) {
     });
 
     watchWindows();
-    createTray();
+    if (SAFE_MODE) {
+      startup.log('tray:skipped-safe-mode');
+    } else {
+      createTray();
+    }
     writeKeyFile();
     startup.log('app:started');
 
