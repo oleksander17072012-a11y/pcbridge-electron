@@ -1,0 +1,65 @@
+name: windows
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (windows-latest, x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package (portable + NSIS installer)
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Report artifacts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem dist -Filter *.exe -Recurse
+          foreach ($file in $files) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
+            "{0} — {1:N1} MB — {2}" -f $file.Name, ($file.Length / 1MB), $hash
+            "### {0}`n`nsize: {1:N1} MB`n`nsha256: ``{2}``" -f $file.Name, ($file.Length / 1MB), $hash |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: pc-bridge-electron-windows-x64
+          path: |
+            dist/*.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true

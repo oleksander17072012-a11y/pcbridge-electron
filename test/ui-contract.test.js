@@ -1,0 +1,47 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+
+function read(...parts) {
+  return fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
+}
+
+test('every element the renderer touches exists in the markup', () => {
+  const html = read('src', 'renderer', 'index.html');
+  const script = read('src', 'renderer', 'app.js');
+  const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
+  const used = new Set([...script.matchAll(/\$\('([^']+)'\)/g)].map((match) => match[1]));
+  const missing = [...used].filter((id) => !ids.has(id));
+  assert.deepEqual(missing, [], `renderer uses unknown ids: ${missing.join(', ')}`);
+});
+
+test('the preload API matches the IPC channels registered in the main process', () => {
+  const preload = read('src', 'preload', 'index.js');
+  const main = read('src', 'main', 'index.js');
+
+  const exposed = [...preload.matchAll(/ipcRenderer\.(?:invoke|send)\('([^']+)'/g)].map((match) => match[1]);
+  const handlers = [
+    ...main.matchAll(/ipcMain\.(?:handle|on)\('([^']+)'/g),
+  ].map((match) => match[1]);
+
+  const missing = [...new Set(exposed)].filter((channel) => !handlers.includes(channel));
+  assert.deepEqual(missing, [], `channels without a handler: ${missing.join(', ')}`);
+});
+
+test('the chat window never gets a preload script', () => {
+  const main = read('src', 'main', 'index.js');
+  const chatBlock = main.slice(main.indexOf('function openChatInApp'), main.indexOf('// ---------------------------------------------------------------- app lifecycle'));
+  assert.ok(chatBlock.includes('partition: \'persist:arena-chat\''), 'chat must use its own persistent partition');
+  assert.ok(!chatBlock.includes('preload'), 'the remote origin must not receive the bridge preload');
+});
+
+test('the renderer runs with context isolation and without node integration', () => {
+  const main = read('src', 'main', 'index.js');
+  assert.ok(main.includes('contextIsolation: true'));
+  assert.ok(main.includes('nodeIntegration: false'));
+});

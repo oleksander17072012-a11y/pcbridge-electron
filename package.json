@@ -1,0 +1,51 @@
+{
+  "name": "pc-bridge-electron",
+  "version": "0.1.0",
+  "description": "PC-Bridge — remote control bridge for your own Windows PC",
+  "main": "src/main/index.js",
+  "author": "oleksander17072012-a11y",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/",
+    "check": "node --check src/main/index.js",
+    "dist": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "koffi": "^3.3.3"
+  },
+  "build": {
+    "appId": "ai.pcbridge.electron",
+    "productName": "PC-Bridge",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "docs/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "requestedExecutionLevel": "requireAdministrator",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "PC-Bridge-portable-${version}.exe"
+    }
+  }
+}
