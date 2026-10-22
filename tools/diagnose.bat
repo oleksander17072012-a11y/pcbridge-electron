@@ -27,11 +27,11 @@ echo.
 echo [1/4] Чищу старые логи запуска
 if exist "%DATA%\startup.log" del /q "%DATA%\startup.log"
 
-echo [2/4] Обычный запуск с логированием Chromium
+echo [2/4] Обычный запуск без прав администратора (--no-elevate)
 echo       (окно может не появиться — ждите 20 секунд)
 set ELECTRON_ENABLE_LOGGING=1
 set ELECTRON_ENABLE_STACK_DUMPING=1
-"%EXE%" --enable-logging --v=1 > "%OUT%\run-console.log" 2>&1
+"%EXE%" --no-elevate --enable-logging --v=1 > "%OUT%\run-console.log" 2>&1
 echo       код завершения: %ERRORLEVEL%
 
 if exist "%DATA%\startup.log" copy /y "%DATA%\startup.log" "%OUT%\startup-normal.log" >nul
@@ -40,7 +40,7 @@ if exist "%DATA%\chrome_debug.log" copy /y "%DATA%\chrome_debug.log" "%OUT%\chro
 echo.
 echo [3/4] Безопасный режим: без прозрачности, без оверлея, без трея
 if exist "%DATA%\startup.log" del /q "%DATA%\startup.log"
-"%EXE%" --safe --enable-logging --v=1 > "%OUT%\run-safe.log" 2>&1
+"%EXE%" --safe --no-elevate --enable-logging --v=1 > "%OUT%\run-safe.log" 2>&1
 echo       код завершения: %ERRORLEVEL%
 
 if exist "%DATA%\startup.log" copy /y "%DATA%\startup.log" "%OUT%\startup-safe.log" >nul

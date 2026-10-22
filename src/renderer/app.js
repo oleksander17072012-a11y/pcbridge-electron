@@ -130,6 +130,8 @@ function renderState(next) {
   $('sCounters').textContent = `${next.commands || 0} / ${next.notes || 0}`;
   $('sAdmin').textContent = next.elevated ? 'администратор' : 'пользователь';
   $('sAdmin').style.color = next.elevated ? 'var(--amber)' : 'var(--muted)';
+  // The restart button only makes sense while the app is not elevated.
+  $('elevateBtn').hidden = Boolean(next.elevated);
 
   $('agentDot').className = `dot ${next.active ? 'on' : 'off'}`;
   $('agentLabel').textContent = next.active ? 'агент активен' : 'пауза';
@@ -189,6 +191,12 @@ async function loadJournal() {
 // ---------------------------------------------------------------- actions
 $('pauseBtn').addEventListener('click', async () => {
   renderState(await api.setActive(!(state?.active ?? true)));
+});
+
+$('elevateBtn').addEventListener('click', async () => {
+  if (!confirm('Перезапустить мост с правами администратора? Текущее окно закроется, откроется новое после подтверждения UAC.')) return;
+  const result = await api.elevate();
+  if (!result.ok) toast(`Не удалось повысить права: ${result.error}`);
 });
 
 $('shotBtn').addEventListener('click', async () => {

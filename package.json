@@ -1,6 +1,6 @@
 {
   "name": "pc-bridge-electron",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "PC-Bridge — remote control bridge for your own Windows PC",
   "main": "src/main/index.js",
   "author": "oleksander17072012-a11y",
@@ -48,7 +48,7 @@
           ]
         }
       ],
-      "requestedExecutionLevel": "requireAdministrator",
+      "requestedExecutionLevel": "asInvoker",
       "icon": "build/icon.ico"
     },
     "nsis": {

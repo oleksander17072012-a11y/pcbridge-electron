@@ -124,6 +124,7 @@ function load() {
     const user32 = koffi.load('user32.dll');
     const gdi32 = koffi.load('gdi32.dll');
     const kernel32 = koffi.load('kernel32.dll');
+    const shell32 = koffi.load('shell32.dll');
 
     api = {
       EnumWindows: user32.func('int __stdcall EnumWindows(void *callback, intptr lparam)'),
@@ -157,6 +158,7 @@ function load() {
       OpenProcess: kernel32.func('intptr __stdcall OpenProcess(uint32 access, int inherit, uint32 pid)'),
       QueryFullProcessImageNameW: kernel32.func('int __stdcall QueryFullProcessImageNameW(intptr process, uint32 flags, _Out_ uint16_t *name, _Inout_ uint32_t *size)'),
       CloseHandle: kernel32.func('int __stdcall CloseHandle(intptr handle)'),
+      IsUserAnAdmin: shell32.func('int __stdcall IsUserAnAdmin()'),
     };
     available = true;
   } catch {

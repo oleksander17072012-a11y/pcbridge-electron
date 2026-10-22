@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 
 const {
-  app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, screen,
+  app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, screen, dialog,
 } = require('electron');
 
 const paths = require('./paths');
@@ -16,6 +16,7 @@ const { createRelay } = require('./relay');
 const { Tunnel } = require('./tunnel');
 const { generateKey, pairingBlock } = require('./key');
 const startup = require('./startup');
+const elevation = require('./elevation');
 
 startup.installCrashHandlers();
 
@@ -24,6 +25,8 @@ const VERSION = app.getVersion();
 // Safe mode disables the three things that can crash a GPU/driver or AV stack before the
 // window paints: transparency, the always-on-top overlay and the tray icon.
 const SAFE_MODE = process.argv.includes('--safe') || process.env.PCBRIDGE_SAFE === '1';
+// `--no-elevate` keeps the app at the current privilege level without asking.
+const SKIP_ELEVATION_PROMPT = process.argv.includes('--no-elevate');
 startup.log('boot', {
   version: VERSION,
   platform: process.platform,
@@ -89,7 +92,7 @@ function snapshot() {
     pairing: pairingBlock({ url: state.tunnel?.url, key: state.key }),
     active: state.active,
     stage: state.journal.stage,
-    elevated: true, // the manifest requests administrator rights
+    elevated: elevation.isElevated(),
     uptime_seconds: Math.round((Date.now() - state.startedAt) / 1000),
     commands: state.commands,
     notes: state.notes,
@@ -149,8 +152,11 @@ function createMainWindow() {
   mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
     startup.log('window:did-fail-load', { code, description });
   });
-  mainWindow.webContents.on('console-message', (_event, level, message) => {
-    startup.log('renderer:console', { level, message: String(message).slice(0, 300) });
+  mainWindow.webContents.on('console-message', (event) => {
+    startup.log('renderer:console', {
+      level: event.level,
+      message: String(event.message ?? '').slice(0, 300),
+    });
   });
 
   // Closing the window only hides it: the bridge must keep running.
@@ -391,6 +397,8 @@ if (!gotLock) {
       broadcastSnapshot();
     });
 
+    await offerElevation();
+
     watchWindows();
     if (SAFE_MODE) {
       startup.log('tray:skipped-safe-mode');
@@ -472,6 +480,55 @@ function createTray() {
   }
 }
 
+// ---------------------------------------------------------------- elevation
+
+let elevationOffered = false;
+
+/**
+ * Asks once per launch whether to restart with administrator rights. The bridge works
+ * without them, so this is an offer, never a hard requirement.
+ */
+async function offerElevation() {
+  if (elevationOffered || SKIP_ELEVATION_PROMPT) return;
+  elevationOffered = true;
+
+  if (!elevation.canElevate() || elevation.isElevated()) {
+    startup.log('elevation:not-needed', { elevated: elevation.isElevated() });
+    return;
+  }
+
+  startup.log('elevation:offering');
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    title: 'Права администратора',
+    message: 'Запустить мост с правами администратора?',
+    detail:
+      'Без прав мост работает и управляет обычными окнами, снимает экран и выполняет команды. ' +
+      'Права нужны только чтобы управлять окнами других приложений, запущенных от администратора.\n\n' +
+      'Повторно этот вопрос не появится, если запускать с флагом --no-elevate.',
+    buttons: ['Перезапустить от администратора', 'Продолжить без прав'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+
+  if (response !== 0) {
+    state.journal.push('admin', 'работа без прав администратора');
+    broadcastSnapshot();
+    return;
+  }
+
+  state.journal.push('admin', 'перезапуск с правами администратора');
+  const result = await elevation.relaunchElevated();
+  if (result.ok) {
+    app.isQuitting = true;
+    app.quit();
+  } else {
+    state.journal.push('error', `повышение прав не удалось: ${result.error}`);
+    broadcastSnapshot();
+  }
+}
+
 // ---------------------------------------------------------------- IPC
 
 function registerIpc() {
@@ -526,6 +583,16 @@ function registerIpc() {
     const handle = window.getNativeWindowHandle();
     const hwnd = handle.length >= 8 ? Number(handle.readBigUInt64LE(0)) : handle.readUInt32LE(0);
     return win32.beginWindowDrag(hwnd);
+  });
+
+  ipcMain.handle('elevate', async () => {
+    if (elevation.isElevated()) return { ok: false, error: 'уже с правами администратора' };
+    const result = await elevation.relaunchElevated();
+    if (result.ok) {
+      app.isQuitting = true;
+      setTimeout(() => app.quit(), 300);
+    }
+    return result;
   });
 
   ipcMain.handle('openDataDir', () => {

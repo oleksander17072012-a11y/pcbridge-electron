@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('bridge', {
   openChatBrowser: () => ipcRenderer.invoke('openChatBrowser'),
   chatIsOpen: () => ipcRenderer.invoke('chatIsOpen'),
   beginDrag: () => ipcRenderer.invoke('beginDrag'),
+  elevate: () => ipcRenderer.invoke('elevate'),
   openDataDir: () => ipcRenderer.invoke('openDataDir'),
   quit: () => ipcRenderer.invoke('quit'),
   minimize: () => ipcRenderer.send('window:minimize'),

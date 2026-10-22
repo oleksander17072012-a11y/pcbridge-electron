@@ -63,3 +63,23 @@ test('the window is shown even if ready-to-show never fires', () => {
   const main = read('src', 'main', 'index.js');
   assert.ok(main.includes('window:forced-show'), 'fallback show is required');
 });
+
+test('the app manifest requests no elevation: the portable stub must be able to start it', () => {
+  const manifest = JSON.parse(read('package.json'));
+  assert.equal(manifest.build.win.requestedExecutionLevel, 'asInvoker');
+});
+
+test('elevation is offered at runtime and can be skipped with a flag', () => {
+  const main = read('src', 'main', 'index.js');
+  assert.ok(main.includes('offerElevation'), 'the app must offer elevation at startup');
+  assert.ok(main.includes('--no-elevate'), 'there must be a way to skip the prompt');
+  assert.ok(main.includes("ipcMain.handle('elevate'"), 'manual elevation must be available');
+});
+
+test('relaunching elevated uses the original portable executable, not the temp copy', () => {
+  const source = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'main', 'elevation.js'),
+    'utf8',
+  );
+  assert.ok(source.includes('PORTABLE_EXECUTABLE_FILE'));
+});
