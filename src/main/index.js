@@ -15,8 +15,19 @@ const { Journal } = require('./journal');
 const { createRelay } = require('./relay');
 const { Tunnel } = require('./tunnel');
 const { generateKey, pairingBlock } = require('./key');
+const startup = require('./startup');
+
+startup.installCrashHandlers();
 
 const VERSION = app.getVersion();
+startup.log('boot', {
+  version: VERSION,
+  platform: process.platform,
+  arch: process.arch,
+  electron: process.versions.electron,
+  packaged: app.isPackaged,
+  elevated: process.env.PCBRIDGE_ELEVATED || 'unknown',
+});
 const CHAT_URL = 'https://arena.ai/';
 
 /** Shared state, passed to the relay and the agent driver. */
@@ -109,8 +120,33 @@ function createMainWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  const rendererPath = path.join(__dirname, '..', 'renderer', 'index.html');
+  startup.log('window:create', { rendererPath, exists: fs.existsSync(rendererPath) });
+
+  mainWindow.loadFile(rendererPath).then(
+    () => startup.log('window:loaded'),
+    (error) => startup.log('window:load-failed', { message: error.message }),
+  );
+
+  // Never depend on a single event to become visible: show as soon as the paint is
+  // ready, and unconditionally after a short fallback in case the renderer stalls.
+  mainWindow.once('ready-to-show', () => {
+    startup.log('window:ready-to-show');
+    mainWindow.show();
+  });
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      startup.log('window:forced-show');
+      mainWindow.show();
+    }
+  }, 2500);
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
+    startup.log('window:did-fail-load', { code, description });
+  });
+  mainWindow.webContents.on('console-message', (_event, level, message) => {
+    startup.log('renderer:console', { level, message: String(message).slice(0, 300) });
+  });
 
   // Closing the window only hides it: the bridge must keep running.
   mainWindow.on('close', (event) => {
@@ -276,12 +312,20 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    startup.log('app:ready');
     if (process.platform !== 'win32') {
       state.journal.push('error', 'PC-Bridge рассчитан на Windows: Win32-функции недоступны');
     }
 
-    createMainWindow();
-    createOverlayWindow();
+    try {
+      createMainWindow();
+      startup.log('main-window:created');
+      createOverlayWindow();
+      startup.log('overlay-window:created');
+    } catch (error) {
+      startup.log('windows:failed', { message: error.message, stack: error.stack });
+      throw error;
+    }
 
     const journalContext = {
       ...state,
@@ -319,10 +363,12 @@ if (!gotLock) {
 
     const port = await relay.listen();
     state.port = port;
+    startup.log('relay:listening', { port });
     state.journal.push('relay', `релей слушает 127.0.0.1:${port}`);
 
     tunnel = new Tunnel(state.journal);
     state.tunnel = tunnel;
+    startup.log('tunnel:starting');
     tunnel.on('url', () => {
       writeKeyFile();
       broadcastSnapshot();
@@ -339,6 +385,7 @@ if (!gotLock) {
     watchWindows();
     createTray();
     writeKeyFile();
+    startup.log('app:started');
 
     if (state.journal.stage) broadcastSnapshot();
   });
@@ -364,31 +411,52 @@ function watchWindows() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.ico');
-  const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('PC-Bridge — мост к вашему ПК');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    {
-      label: 'Показать окно',
-      click: () => {
-        mainWindow.show();
-        mainWindow.focus();
+  const candidates = [
+    path.join(__dirname, '..', '..', 'build', 'icon.ico'),
+    path.join(process.resourcesPath || '', 'app.asar', 'build', 'icon.ico'),
+  ];
+  let icon = nativeImage.createEmpty();
+  for (const candidate of candidates) {
+    if (!candidate || !fs.existsSync(candidate)) continue;
+    const loaded = nativeImage.createFromPath(candidate);
+    if (!loaded.isEmpty()) {
+      icon = loaded;
+      startup.log('tray:icon', { source: candidate });
+      break;
+    }
+  }
+  if (icon.isEmpty()) startup.log('tray:icon-missing', { candidates });
+
+  try {
+    tray = new Tray(icon.isEmpty() ? icon : icon.resize({ width: 16, height: 16 }));
+    tray.setToolTip('PC-Bridge — мост к вашему ПК');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      {
+        label: 'Показать окно',
+        click: () => {
+          mainWindow.show();
+          mainWindow.focus();
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'Выход',
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
+      { type: 'separator' },
+      {
+        label: 'Выход',
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        },
       },
-    },
-  ]));
-  tray.on('double-click', () => {
-    mainWindow.show();
-    mainWindow.focus();
-  });
+    ]));
+    tray.on('double-click', () => {
+      mainWindow.show();
+      mainWindow.focus();
+    });
+    startup.log('tray:ready');
+  } catch (error) {
+    // A tray that cannot be created must not take the whole bridge down.
+    startup.log('tray:failed', { message: error.message });
+    tray = null;
+  }
 }
 
 // ---------------------------------------------------------------- IPC

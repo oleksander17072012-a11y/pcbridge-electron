@@ -45,3 +45,21 @@ test('the renderer runs with context isolation and without node integration', ()
   assert.ok(main.includes('contextIsolation: true'));
   assert.ok(main.includes('nodeIntegration: false'));
 });
+
+test('startup trace is installed before any window is created', () => {
+  const main = read('src', 'main', 'index.js');
+  assert.ok(main.includes('startup.installCrashHandlers()'), 'crash handlers must be installed at require time');
+  assert.ok(main.includes("startup.log('app:ready')"));
+});
+
+test('tray creation cannot take the app down and the icon ships inside the package', () => {
+  const main = read('src', 'main', 'index.js');
+  const manifest = JSON.parse(read('package.json'));
+  assert.ok(manifest.build.files.includes('build/icon.ico'), 'the tray icon must be packaged');
+  assert.ok(main.includes('tray:failed'), 'tray creation must be guarded');
+});
+
+test('the window is shown even if ready-to-show never fires', () => {
+  const main = read('src', 'main', 'index.js');
+  assert.ok(main.includes('window:forced-show'), 'fallback show is required');
+});
