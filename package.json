@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"test/**/*.test.js\"",
+    "test": "node --test test/journal.test.js test/shell.test.js test/tunnel.test.js test/key.test.js test/ui-contract.test.js",
     "check": "node --check src/main/index.js",
     "dist": "electron-builder --win --x64"
   },
