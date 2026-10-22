@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.js\"",
     "check": "node --check src/main/index.js",
     "dist": "electron-builder --win --x64"
   },
@@ -33,8 +33,18 @@
     ],
     "win": {
       "target": [
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "requestedExecutionLevel": "requireAdministrator",
       "icon": "build/icon.ico"
